@@ -3,15 +3,15 @@ using UnityEngine;
 
 public class BoardManager : MonoBehaviour
 {
-    [Header("Board")]
+    [Header("Dimensions")]
     [SerializeField] private int width = 6;
     [SerializeField] private int height = 6;
     [SerializeField] private float tileSize = 1f;
 
-    [Header("Tile")]
+    [Header("Prefab Tile")]
     [SerializeField] private Tile tilePrefab;
 
-    [Header("Sprites")]
+    [Header("Sprites des Récoltes")]
     [SerializeField] private Sprite strawberrySprite;
     [SerializeField] private Sprite carrotSprite;
     [SerializeField] private Sprite cornSprite;
@@ -53,31 +53,35 @@ public class BoardManager : MonoBehaviour
     private void CenterCamera()
     {
         Camera cam = Camera.main;
-        if (cam != null)
+        if (cam == null)
         {
-            float centerX = (width - 1) * tileSize * 0.5f;
-            float centerY = (height - 1) * tileSize * 0.5f;
-            cam.transform.position = new Vector3(centerX, centerY - 0.2f, -10f);
-            cam.orthographic = true;
-
-            float aspect = (float)Screen.width / Mathf.Max(1, Screen.height);
-            float boardWidth = width * tileSize + 1.2f;
-            if (aspect < 1f) // Mode portrait mobile (9:16 ou 1080x1920)
-            {
-                cam.orthographicSize = (boardWidth / aspect) * 0.5f;
-            }
-            else // Mode paysage / éditeur 16:10
-            {
-                cam.orthographicSize = Mathf.Max(width, height) * tileSize * 0.8f;
-            }
-
-            cam.backgroundColor = new Color(0.18f, 0.45f, 0.22f); // Vert prairie Farm Bloom
+            GameObject camObj = new GameObject("Main Camera");
+            cam = camObj.AddComponent<Camera>();
+            cam.tag = "MainCamera";
         }
+
+        float centerX = (width - 1) * tileSize * 0.5f;
+        float centerY = (height - 1) * tileSize * 0.5f;
+        cam.transform.position = new Vector3(centerX, centerY, -10f);
+        cam.orthographic = true;
+
+        float aspect = (float)Screen.width / Mathf.Max(1, Screen.height);
+        float boardWidth = width * tileSize + 1.2f;
+        if (aspect < 1f) // Portrait (9:16)
+        {
+            cam.orthographicSize = (boardWidth / aspect) * 0.5f;
+        }
+        else // Paysage (16:10 / 16:9)
+        {
+            cam.orthographicSize = Mathf.Max(width, height) * tileSize * 0.75f;
+        }
+
+        cam.backgroundColor = new Color(0.18f, 0.45f, 0.22f); // Vert herbe prairie Farm Bloom
     }
 
     private void EnsureDefaults()
     {
-        // Création de secours automatique du prefab si non assigné dans l'inspecteur
+        // Création de secours automatique du prefab si non assigné
         if (tilePrefab == null)
         {
             GameObject fallbackPrefab = new GameObject("DefaultTilePrefab");
@@ -87,7 +91,7 @@ public class BoardManager : MonoBehaviour
             fallbackPrefab.SetActive(false);
         }
 
-        // Génération automatique de sprites procéduraux nets si non assignés dans l'inspecteur
+        // Génération automatique des 5 sprites nets avec couleurs caractéristiques si non assignés
         strawberrySprite ??= CreateCropSprite(new Color(0.95f, 0.15f, 0.25f), "Fraise");
         carrotSprite ??= CreateCropSprite(new Color(1f, 0.55f, 0.05f), "Carotte");
         cornSprite ??= CreateCropSprite(new Color(1f, 0.85f, 0.1f), "Maïs");
@@ -119,12 +123,15 @@ public class BoardManager : MonoBehaviour
                 board[x, y] = tile;
             }
         }
+
+        Debug.Log($"<b>[Farm Bloom]</b> Plateau Match-3 {width}x{height} généré avec succès ({width * height} récoltes, 0 alignement au départ) !");
     }
 
     private CropType GetSafeRandomCrop(int x, int y)
     {
         List<CropType> available = new List<CropType>(cropTypes);
 
+        // Évite 3 identiques consécutifs à l'horizontale
         if (x >= 2)
         {
             CropType left1 = board[x - 1, y].cropType;
@@ -136,6 +143,7 @@ public class BoardManager : MonoBehaviour
             }
         }
 
+        // Évite 3 identiques consécutifs à la verticale
         if (y >= 2)
         {
             CropType down1 = board[x, y - 1].cropType;
@@ -163,14 +171,14 @@ public class BoardManager : MonoBehaviour
         };
     }
 
-    private Sprite CreateCropSprite(Color mainColor, string name)
+    private Sprite CreateCropSprite(Color mainColor, string cropName)
     {
         int size = 128;
         Texture2D tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
         Color[] px = new Color[size * size];
 
         Vector2 center = new Vector2(size * 0.5f, size * 0.5f);
-        float radius = size * 0.4f;
+        float radius = size * 0.42f;
 
         for (int y = 0; y < size; y++)
         {
@@ -179,8 +187,15 @@ public class BoardManager : MonoBehaviour
                 float dist = Vector2.Distance(new Vector2(x, y), center);
                 if (dist <= radius)
                 {
-                    float light = Mathf.Clamp01(1f - Vector2.Distance(new Vector2(x, y), center + new Vector2(-12f, 12f)) / (radius * 1.5f)) * 0.35f;
-                    px[y * size + x] = new Color(Mathf.Min(1f, mainColor.r + light), Mathf.Min(1f, mainColor.g + light), Mathf.Min(1f, mainColor.b + light), 1f);
+                    // Dégradé d'éclairage 3D casual arrondi
+                    float light = Mathf.Clamp01(1f - Vector2.Distance(new Vector2(x, y), center + new Vector2(-15f, 15f)) / (radius * 1.6f)) * 0.35f;
+                    float border = dist > radius - 3f ? 0.75f : 1f; // contour doux
+                    px[y * size + x] = new Color(
+                        Mathf.Min(1f, mainColor.r + light) * border,
+                        Mathf.Min(1f, mainColor.g + light) * border,
+                        Mathf.Min(1f, mainColor.b + light) * border,
+                        1f
+                    );
                 }
                 else
                 {

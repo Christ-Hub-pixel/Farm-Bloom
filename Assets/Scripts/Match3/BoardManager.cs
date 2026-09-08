@@ -104,11 +104,43 @@ public class BoardManager : MonoBehaviour
             fallbackPrefab.SetActive(false);
         }
 
+        // Chargement direct des véritables sprites PNG illustrés (Fraise, Carotte, Maïs, Tomate, Pomme de terre)
+        strawberrySprite ??= LoadPngSprite("Art/Sprites/Strawberry.png");
+        carrotSprite ??= LoadPngSprite("Art/Sprites/Carrot.png");
+        cornSprite ??= LoadPngSprite("Art/Sprites/Corn.png");
+        tomatoSprite ??= LoadPngSprite("Art/Sprites/Tomato.png");
+        potatoSprite ??= LoadPngSprite("Art/Sprites/Potato.png");
+
+        // Secours procédural si les fichiers PNG sont absents
         strawberrySprite ??= CreateCropSprite(new Color(0.95f, 0.15f, 0.25f), "Fraise");
         carrotSprite ??= CreateCropSprite(new Color(1f, 0.55f, 0.05f), "Carotte");
         cornSprite ??= CreateCropSprite(new Color(1f, 0.85f, 0.1f), "Maïs");
         tomatoSprite ??= CreateCropSprite(new Color(0.95f, 0.25f, 0.15f), "Tomate");
         potatoSprite ??= CreateCropSprite(new Color(0.72f, 0.52f, 0.35f), "PommeDeTerre");
+    }
+
+    private Sprite LoadPngSprite(string relativePath)
+    {
+        try
+        {
+            string fullPath = System.IO.Path.Combine(Application.dataPath, relativePath);
+            if (System.IO.File.Exists(fullPath))
+            {
+                byte[] bytes = System.IO.File.ReadAllBytes(fullPath);
+                Texture2D tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+                if (tex.LoadImage(bytes))
+                {
+                    tex.filterMode = FilterMode.Bilinear;
+                    // 280 pixels par unité donne une taille de ~0.91 unité (espacement parfait dans une case 1x1)
+                    return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 280f);
+                }
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"[BoardManager] Impossible de charger le sprite {relativePath} : {e.Message}");
+        }
+        return null;
     }
 
     private void CreateBoard()

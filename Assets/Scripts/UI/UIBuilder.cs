@@ -179,24 +179,35 @@ namespace FarmBloom.UI
             GameObject screen = CreateFullScreen("SplashScreen", parent, new Color(0.15f, 0.45f, 0.15f));
 
             // Titre & Logo Farm Bloom
-            CreateLabel("Title", screen.transform, "FARM BLOOM", 84, new Color(1f, 0.92f, 0.2f), TextAnchor.MiddleCenter, new Vector2(0f, 250f));
-            CreateLabel("Tagline", screen.transform, "RÉCOLTE • CONSTRUIS • PROGRESSE", 32, new Color(0.95f, 0.95f, 0.9f), TextAnchor.MiddleCenter, new Vector2(0f, 170f));
+            CreateLabel("Title", screen.transform, "FARM BLOOM", 72, new Color(1f, 0.92f, 0.2f), TextAnchor.MiddleCenter, new Vector2(0f, 320f));
+            CreateLabel("Tagline", screen.transform, "RÉCOLTE • CONSTRUIS • PROGRESSE", 26, new Color(0.95f, 0.95f, 0.9f), TextAnchor.MiddleCenter, new Vector2(0f, 240f));
 
             // Mascotte Poussin
             GameObject mascot = CreateUIObject("MascotBox", screen.transform);
-            mascot.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, -20f);
-            mascot.GetComponent<RectTransform>().sizeDelta = new Vector2(260f, 260f);
+            mascot.GetComponent<RectTransform>().anchoredPosition = new Vector2(0f, 60f);
+            mascot.GetComponent<RectTransform>().sizeDelta = new Vector2(240f, 200f);
             Image mImg = mascot.AddComponent<Image>();
             mImg.color = new Color(1f, 0.92f, 0.5f);
-            CreateLabel("MascotTxt", mascot.transform, "🐥\nBienvenue à la Ferme !", 34, new Color(0.4f, 0.25f, 0.1f), TextAnchor.MiddleCenter);
+            CreateLabel("MascotTxt", mascot.transform, "🐥\nBienvenue à la Ferme !", 30, new Color(0.4f, 0.25f, 0.1f), TextAnchor.MiddleCenter);
 
-            // Bouton JOUER
-            GameObject playBtn = CreateButton("PlayBtn", screen.transform, new Vector2(0f, -260f), new Vector2(380f, 110f), () => GameManager.Instance?.SwitchScreen(GameScreen.WorldMap));
+            // Bouton JOUER (Lance directement la partie Match-3)
+            GameObject playBtn = CreateButton("PlayBtn", screen.transform, new Vector2(0f, -140f), new Vector2(380f, 100f), () =>
+            {
+                if (GameManager.Instance != null)
+                {
+                    GameManager.Instance.StartLevel(1);
+                }
+                else
+                {
+                    screen.SetActive(false);
+                    UIManager.Instance?.Match3GameScreen?.SetActive(true);
+                }
+            });
             playBtn.GetComponent<Image>().color = new Color(0.35f, 0.85f, 0.18f);
-            CreateLabel("PlayTxt", playBtn.transform, "JOUER !", 46, Color.white, TextAnchor.MiddleCenter);
+            CreateLabel("PlayTxt", playBtn.transform, "JOUER !", 42, Color.white, TextAnchor.MiddleCenter);
 
             // Bouton Se connecter
-            GameObject loginBtn = CreateButton("LoginBtn", screen.transform, new Vector2(0f, -380f), new Vector2(260f, 65f), () => GameManager.Instance?.SwitchScreen(GameScreen.Auth));
+            GameObject loginBtn = CreateButton("LoginBtn", screen.transform, new Vector2(0f, -270f), new Vector2(280f, 65f), () => GameManager.Instance?.SwitchScreen(GameScreen.Auth));
             loginBtn.GetComponent<Image>().color = new Color(0.2f, 0.35f, 0.2f, 0.8f);
             CreateLabel("LoginTxt", loginBtn.transform, "Se connecter", 24, Color.white, TextAnchor.MiddleCenter);
 
@@ -900,7 +911,11 @@ namespace FarmBloom.UI
         {
             GameObject txtObj = CreateUIObject(name, parent);
             RectTransform rt = txtObj.GetComponent<RectTransform>();
-            if (pos.HasValue) rt.anchoredPosition = pos.Value;
+            if (pos.HasValue)
+            {
+                rt.anchoredPosition = pos.Value;
+                rt.sizeDelta = new Vector2(900f, 150f);
+            }
             else
             {
                 rt.anchorMin = Vector2.zero;
@@ -914,7 +929,7 @@ namespace FarmBloom.UI
             txt.color = color;
             txt.alignment = alignment;
             txt.font = _defaultFont;
-            txt.horizontalOverflow = HorizontalWrapMode.Wrap;
+            txt.horizontalOverflow = HorizontalWrapMode.Overflow;
             txt.verticalOverflow = VerticalWrapMode.Overflow;
 
             return txt;

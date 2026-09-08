@@ -13,17 +13,11 @@ namespace FarmBloom
     {
         private static bool _initialized = false;
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        // Désactivé pour permettre de tester le moteur Match-3 pur sans superposition de l'UI
+        // [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoInitialize()
         {
-            if (_initialized) return;
-
-            // Vérifie si un Initializer est déjà présent dans la scène
-            if (FindAnyObjectByType<FarmBloomGameInitializer>() == null)
-            {
-                GameObject root = new GameObject("FarmBloom_Root");
-                root.AddComponent<FarmBloomGameInitializer>();
-            }
+            // Laissé vide volontairement
         }
 
         private void Awake()

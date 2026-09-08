@@ -29,6 +29,16 @@ public class BoardManager : MonoBehaviour
         CropType.Potato
     };
 
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    private static void AutoCreateBoardManager()
+    {
+        if (FindAnyObjectByType<BoardManager>() == null)
+        {
+            GameObject go = new GameObject("BoardManager");
+            go.AddComponent<BoardManager>();
+        }
+    }
+
     private void Awake()
     {
         EnsureDefaults();
@@ -47,9 +57,20 @@ public class BoardManager : MonoBehaviour
         {
             float centerX = (width - 1) * tileSize * 0.5f;
             float centerY = (height - 1) * tileSize * 0.5f;
-            cam.transform.position = new Vector3(centerX, centerY, -10f);
+            cam.transform.position = new Vector3(centerX, centerY - 0.2f, -10f);
             cam.orthographic = true;
-            cam.orthographicSize = Mathf.Max(width, height) * tileSize * 0.75f;
+
+            float aspect = (float)Screen.width / Mathf.Max(1, Screen.height);
+            float boardWidth = width * tileSize + 1.2f;
+            if (aspect < 1f) // Mode portrait mobile (9:16 ou 1080x1920)
+            {
+                cam.orthographicSize = (boardWidth / aspect) * 0.5f;
+            }
+            else // Mode paysage / éditeur 16:10
+            {
+                cam.orthographicSize = Mathf.Max(width, height) * tileSize * 0.8f;
+            }
+
             cam.backgroundColor = new Color(0.18f, 0.45f, 0.22f); // Vert prairie Farm Bloom
         }
     }

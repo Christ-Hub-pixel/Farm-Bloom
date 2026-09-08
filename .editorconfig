@@ -1,0 +1,6 @@
+root = true
+
+[*.cs]
+# Désactive l'avertissement de correspondance dossier/namespace (IDE0130)
+# Dans Unity, les namespaces de jeu propres (ex: FarmBloom.UI) sont la convention standard plutôt que Assets.Scripts.UI
+dotnet_diagnostic.IDE0130.severity = none

@@ -1,88 +1,41 @@
-using System.Collections;
 using UnityEngine;
 
+[RequireComponent(typeof(BoxCollider2D))]
 public class Tile : MonoBehaviour
 {
     public CropType cropType;
-    public int x;
-    public int y;
 
     private SpriteRenderer spriteRenderer;
-    private Coroutine moveCoroutine;
+    private BoardManager boardManager;
 
     private void Awake()
     {
         spriteRenderer = GetComponent<SpriteRenderer>();
+
+        BoxCollider2D col = GetComponent<BoxCollider2D>();
+        if (col == null)
+        {
+            col = gameObject.AddComponent<BoxCollider2D>();
+        }
+        col.size = new Vector2(1f, 1f);
     }
 
-    public void Setup(CropType type, Sprite sprite)
+    public void Setup(CropType type, Sprite sprite, BoardManager manager)
     {
         cropType = type;
+        boardManager = manager;
 
-        if (spriteRenderer != null)
+        if (spriteRenderer != null && sprite != null)
         {
             spriteRenderer.sprite = sprite;
         }
     }
 
-    public void SetGridPosition(int gridX, int gridY)
+    private void OnMouseDown()
     {
-        x = gridX;
-        y = gridY;
-    }
-
-    public void SetSelected(bool selected)
-    {
-        transform.localScale = selected ? Vector3.one * 1.15f : Vector3.one;
-    }
-
-    public void MoveTo(Vector3 targetPos, float duration)
-    {
-        if (moveCoroutine != null)
+        if (boardManager != null)
         {
-            StopCoroutine(moveCoroutine);
+            boardManager.SelectTile(this);
         }
-        moveCoroutine = StartCoroutine(MoveRoutine(targetPos, duration));
-    }
-
-    private IEnumerator MoveRoutine(Vector3 targetPos, float duration)
-    {
-        Vector3 startPos = transform.position;
-        float elapsed = 0f;
-
-        while (elapsed < duration)
-        {
-            elapsed += Time.deltaTime;
-            float t = Mathf.Clamp01(elapsed / duration);
-            // Courbe fluide (smoothstep)
-            t = t * t * (3f - 2f * t);
-            transform.position = Vector3.Lerp(startPos, targetPos, t);
-            yield return null;
-        }
-
-        transform.position = targetPos;
-        moveCoroutine = null;
-    }
-
-    public void Disappear(float duration)
-    {
-        if (moveCoroutine != null) StopCoroutine(moveCoroutine);
-        StartCoroutine(DisappearRoutine(duration));
-    }
-
-    private IEnumerator DisappearRoutine(float duration)
-    {
-        Vector3 startScale = transform.localScale;
-        float elapsed = 0f;
-
-        while (elapsed < duration)
-        {
-            elapsed += Time.deltaTime;
-            float t = Mathf.Clamp01(elapsed / duration);
-            transform.localScale = Vector3.Lerp(startScale, Vector3.zero, t);
-            yield return null;
-        }
-
-        Destroy(gameObject);
     }
 }

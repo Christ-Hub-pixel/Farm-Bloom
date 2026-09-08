@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -20,12 +19,10 @@ public class BoardManager : MonoBehaviour
     [SerializeField] private Sprite potatoSprite;
 
     private Tile[,] board;
-    private bool isBusy = false;
 
-    // Interaction & Sélection
+    // Étape 2 : Sélection et Échange
     private Tile selectedTile;
-    private Vector2 touchStartPos;
-    private const float MinSwipeDistance = 30f;
+    private bool isSwapping = false;
 
     private readonly CropType[] cropTypes =
     {
@@ -57,13 +54,6 @@ public class BoardManager : MonoBehaviour
         CreateBoard();
     }
 
-    private void Update()
-    {
-        if (isBusy || board == null) return;
-
-        HandleInput();
-    }
-
     private void CenterCamera()
     {
         Camera cam = Camera.main;
@@ -78,16 +68,16 @@ public class BoardManager : MonoBehaviour
         float centerY = (height - 1) * tileSize * 0.5f;
         cam.transform.position = new Vector3(centerX, centerY - 0.2f, -10f);
         cam.orthographic = true;
-        cam.clearFlags = CameraClearFlags.SolidColor; // Fond uni vert naturel
+        cam.clearFlags = CameraClearFlags.SolidColor;
         cam.backgroundColor = new Color(0.18f, 0.45f, 0.22f); // Vert prairie Farm Bloom
 
         float aspect = (float)Screen.width / Mathf.Max(1, Screen.height);
         float boardWidth = width * tileSize + 1.2f;
-        if (aspect < 1f) // Portrait (9:16)
+        if (aspect < 1f) // Mode portrait mobile (9:16)
         {
             cam.orthographicSize = (boardWidth / aspect) * 0.5f;
         }
-        else // Paysage (16:10 / 16:9)
+        else // Mode paysage / éditeur
         {
             cam.orthographicSize = Mathf.Max(width, height) * tileSize * 0.75f;
         }
@@ -100,18 +90,19 @@ public class BoardManager : MonoBehaviour
             GameObject fallbackPrefab = new GameObject("DefaultTilePrefab");
             fallbackPrefab.transform.SetParent(transform);
             fallbackPrefab.AddComponent<SpriteRenderer>();
+            fallbackPrefab.AddComponent<BoxCollider2D>().size = new Vector2(tileSize, tileSize);
             tilePrefab = fallbackPrefab.AddComponent<Tile>();
             fallbackPrefab.SetActive(false);
         }
 
-        // Chargement direct des véritables sprites PNG illustrés (Fraise, Carotte, Maïs, Tomate, Pomme de terre)
+        // Chargement direct des sprites PNG s'ils existent
         strawberrySprite ??= LoadPngSprite("Art/Sprites/Strawberry.png");
         carrotSprite ??= LoadPngSprite("Art/Sprites/Carrot.png");
         cornSprite ??= LoadPngSprite("Art/Sprites/Corn.png");
         tomatoSprite ??= LoadPngSprite("Art/Sprites/Tomato.png");
         potatoSprite ??= LoadPngSprite("Art/Sprites/Potato.png");
 
-        // Secours procédural si les fichiers PNG sont absents
+        // Secours procédural si nécessaire
         strawberrySprite ??= CreateCropSprite(new Color(0.95f, 0.15f, 0.25f), "Fraise");
         carrotSprite ??= CreateCropSprite(new Color(1f, 0.55f, 0.05f), "Carotte");
         cornSprite ??= CreateCropSprite(new Color(1f, 0.85f, 0.1f), "Maïs");
@@ -131,7 +122,6 @@ public class BoardManager : MonoBehaviour
                 if (tex.LoadImage(bytes))
                 {
                     tex.filterMode = FilterMode.Bilinear;
-                    // 280 pixels par unité donne une taille de ~0.91 unité (espacement parfait dans une case 1x1)
                     return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 280f);
                 }
             }
@@ -162,317 +152,121 @@ public class BoardManager : MonoBehaviour
 
                 tile.gameObject.SetActive(true);
                 tile.name = $"Tile_{x}_{y}";
-                tile.Setup(crop, GetSprite(crop));
-                tile.SetGridPosition(x, y);
+                tile.Setup(crop, GetSprite(crop), this);
 
                 board[x, y] = tile;
             }
         }
 
-        Debug.Log($"<b>[Farm Bloom]</b> Plateau {width}x{height} généré avec succès ! Prêt pour le jeu.");
+        Debug.Log($"<b>[Farm Bloom]</b> Plateau {width}x{height} généré avec succès ({width * height} cases) !");
     }
 
-    // ==================== INTERACTION & ÉCHANGE ====================
+    // ==================== ÉTAPE 2 : SÉLECTION & ÉCHANGE ====================
 
-    private void HandleInput()
+    public void SelectTile(Tile tile)
     {
-        if (Input.GetMouseButtonDown(0))
+        if (isSwapping)
+            return;
+
+        if (selectedTile == null)
         {
-            Tile clickedTile = GetTileAtScreenPosition(Input.mousePosition);
-            if (clickedTile != null)
-            {
-                // Si on avait déjà sélectionné une tuile voisine par clic
-                if (selectedTile != null && IsNeighbor(selectedTile, clickedTile))
-                {
-                    Tile prev = selectedTile;
-                    selectedTile.SetSelected(false);
-                    selectedTile = null;
-                    StartCoroutine(TrySwapRoutine(prev, clickedTile));
-                    return;
-                }
+            selectedTile = tile;
 
-                if (selectedTile != null)
-                {
-                    selectedTile.SetSelected(false);
-                }
+            Debug.Log("Première récolte sélectionnée : " + tile.cropType);
+            HighlightTile(tile);
 
-                selectedTile = clickedTile;
-                selectedTile.SetSelected(true);
-                touchStartPos = Input.mousePosition;
-            }
-        }
-        else if (Input.GetMouseButtonUp(0) && selectedTile != null)
-        {
-            Vector2 delta = (Vector2)Input.mousePosition - touchStartPos;
-
-            if (delta.magnitude >= MinSwipeDistance)
-            {
-                // Détection de la direction du glissement (Swipe)
-                Vector2Int dir = Vector2Int.zero;
-                if (Mathf.Abs(delta.x) > Mathf.Abs(delta.y))
-                {
-                    dir = delta.x > 0 ? Vector2Int.right : Vector2Int.left;
-                }
-                else
-                {
-                    dir = delta.y > 0 ? Vector2Int.up : Vector2Int.down;
-                }
-
-                int targetX = selectedTile.x + dir.x;
-                int targetY = selectedTile.y + dir.y;
-
-                if (IsValidGridPosition(targetX, targetY))
-                {
-                    Tile neighbor = board[targetX, targetY];
-                    Tile current = selectedTile;
-                    selectedTile.SetSelected(false);
-                    selectedTile = null;
-                    StartCoroutine(TrySwapRoutine(current, neighbor));
-                    return;
-                }
-            }
-
-            // Simple clic : on garde la sélection active pour permettre un second clic sur le voisin
-        }
-    }
-
-    private bool IsNeighbor(Tile a, Tile b)
-    {
-        return (Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y)) == 1;
-    }
-
-    private bool IsValidGridPosition(int x, int y)
-    {
-        return x >= 0 && x < width && y >= 0 && y < height;
-    }
-
-    private Tile GetTileAtScreenPosition(Vector3 screenPos)
-    {
-        Camera cam = Camera.main;
-        if (cam == null) return null;
-
-        Vector3 worldPos = cam.ScreenToWorldPoint(screenPos);
-        int x = Mathf.RoundToInt(worldPos.x / tileSize);
-        int y = Mathf.RoundToInt(worldPos.y / tileSize);
-
-        if (IsValidGridPosition(x, y))
-        {
-            return board[x, y];
+            return;
         }
 
-        return null;
-    }
-
-    private IEnumerator TrySwapRoutine(Tile a, Tile b)
-    {
-        isBusy = true;
-
-        // 1. Sauvegarder positions d'origine
-        int xA = a.x, yA = a.y;
-        int xB = b.x, yB = b.y;
-
-        // 2. Échanger dans le tableau de données
-        board[xA, yA] = b;
-        board[xB, yB] = a;
-        a.SetGridPosition(xB, yB);
-        b.SetGridPosition(xA, yA);
-
-        // 3. Animation fluide de l'échange
-        float swapDuration = 0.2f;
-        a.MoveTo(new Vector3(xB * tileSize, yB * tileSize, 0f), swapDuration);
-        b.MoveTo(new Vector3(xA * tileSize, yA * tileSize, 0f), swapDuration);
-
-        yield return new WaitForSeconds(swapDuration + 0.05f);
-
-        // 4. Vérifier si un alignement de 3 récoltes (ou plus) a été formé
-        List<Tile> matches = FindAllMatches();
-
-        if (matches.Count > 0)
+        if (selectedTile == tile)
         {
-            yield return StartCoroutine(ProcessMatchesRoutine(matches));
+            ClearSelection();
+            return;
+        }
+
+        if (AreAdjacent(selectedTile, tile))
+        {
+            SwapTiles(selectedTile, tile);
         }
         else
         {
-            // Aucun alignement : annuler l'échange (retour à la place initiale)
-            Debug.Log("<color=orange><b>[Match-3]</b> Pas d'alignement, retour à la position initiale.</color>");
+            ClearSelection();
 
-            board[xA, yA] = a;
-            board[xB, yB] = b;
-            a.SetGridPosition(xA, yA);
-            b.SetGridPosition(xB, yB);
-
-            a.MoveTo(new Vector3(xA * tileSize, yA * tileSize, 0f), swapDuration);
-            b.MoveTo(new Vector3(xB * tileSize, yB * tileSize, 0f), swapDuration);
-
-            yield return new WaitForSeconds(swapDuration + 0.05f);
-            isBusy = false;
+            selectedTile = tile;
+            HighlightTile(tile);
         }
     }
 
-    // ==================== SUPPRESSION, GRAVITÉ & REMPLISSAGE ====================
-
-    private IEnumerator ProcessMatchesRoutine(List<Tile> initialMatches)
+    private bool AreAdjacent(Tile a, Tile b)
     {
-        List<Tile> currentMatches = initialMatches;
+        Vector3 difference = a.transform.position - b.transform.position;
 
-        while (currentMatches != null && currentMatches.Count > 0)
-        {
-            Debug.Log($"<color=green><b>[Match-3]</b> 💥 Destruction de {currentMatches.Count} récoltes !</color>");
+        float distance = Mathf.Abs(difference.x) + Mathf.Abs(difference.y);
 
-            // 1. Destruction animée des récoltes alignées
-            foreach (Tile tile in currentMatches)
-            {
-                if (tile != null)
-                {
-                    board[tile.x, tile.y] = null;
-                    tile.Disappear(0.18f);
-                }
-            }
-
-            yield return new WaitForSeconds(0.2f);
-
-            // 2. Gravité : faire descendre les tuiles restantes
-            yield return StartCoroutine(ApplyGravityRoutine());
-
-            // 3. Remplissage : spawner de nouvelles récoltes en haut de chaque colonne
-            yield return StartCoroutine(RefillBoardRoutine());
-
-            // 4. Cascades : vérifier si de nouveaux alignements se sont formés
-            currentMatches = FindAllMatches();
-            if (currentMatches.Count > 0)
-            {
-                Debug.Log($"<color=yellow><b>[Match-3]</b> ✨ Combo en cascade ! {currentMatches.Count} nouvelles récoltes alignées !</color>");
-                yield return new WaitForSeconds(0.12f);
-            }
-        }
-
-        isBusy = false;
+        return Mathf.Abs(distance - tileSize) < 0.05f || Mathf.Approximately(distance, tileSize);
     }
 
-    private IEnumerator ApplyGravityRoutine()
+    private void SwapTiles(Tile a, Tile b)
     {
-        bool anyTileMoved = false;
+        isSwapping = true;
 
+        Vector3 positionA = a.transform.position;
+        Vector3 positionB = b.transform.position;
+
+        a.transform.position = positionB;
+        b.transform.position = positionA;
+
+        // Mise à jour du tableau interne
+        int xA = -1, yA = -1, xB = -1, yB = -1;
         for (int x = 0; x < width; x++)
         {
             for (int y = 0; y < height; y++)
             {
-                if (board[x, y] == null)
-                {
-                    // Trouver la première tuile au-dessus
-                    for (int aboveY = y + 1; aboveY < height; aboveY++)
-                    {
-                        if (board[x, aboveY] != null)
-                        {
-                            Tile fallingTile = board[x, aboveY];
-                            board[x, y] = fallingTile;
-                            board[x, aboveY] = null;
-
-                            fallingTile.SetGridPosition(x, y);
-                            fallingTile.MoveTo(new Vector3(x * tileSize, y * tileSize, 0f), 0.2f);
-                            anyTileMoved = true;
-                            break;
-                        }
-                    }
-                }
+                if (board[x, y] == a) { xA = x; yA = y; }
+                if (board[x, y] == b) { xB = x; yB = y; }
             }
         }
-
-        if (anyTileMoved)
+        if (xA != -1 && xB != -1)
         {
-            yield return new WaitForSeconds(0.22f);
+            board[xA, yA] = b;
+            board[xB, yB] = a;
+        }
+
+        ClearSelection();
+
+        isSwapping = false;
+
+        Debug.Log($"<color=cyan><b>[Match-3]</b> Échange effectué entre {a.cropType} et {b.cropType} !</color>");
+    }
+
+    private void HighlightTile(Tile tile)
+    {
+        SpriteRenderer renderer = tile.GetComponent<SpriteRenderer>();
+
+        if (renderer != null)
+        {
+            renderer.color = new Color(0.75f, 0.75f, 0.75f); // Teinte visuelle pour marquer la sélection
         }
     }
 
-    private IEnumerator RefillBoardRoutine()
+    private void ClearSelection()
     {
-        float dropDuration = 0.25f;
+        selectedTile = null;
 
-        for (int x = 0; x < width; x++)
+        if (board == null) return;
+
+        foreach (Tile tile in board)
         {
-            int emptySpacesInCol = 0;
-
-            for (int y = 0; y < height; y++)
+            if (tile != null)
             {
-                if (board[x, y] == null)
+                SpriteRenderer renderer = tile.GetComponent<SpriteRenderer>();
+
+                if (renderer != null)
                 {
-                    emptySpacesInCol++;
-                    CropType crop = cropTypes[Random.Range(0, cropTypes.Length)];
-
-                    // Apparition au-dessus de la grille
-                    Vector3 spawnPos = new Vector3(x * tileSize, (height + emptySpacesInCol) * tileSize, 0f);
-                    Vector3 targetPos = new Vector3(x * tileSize, y * tileSize, 0f);
-
-                    Tile newTile = Instantiate(tilePrefab, spawnPos, Quaternion.identity, transform);
-                    newTile.gameObject.SetActive(true);
-                    newTile.name = $"Tile_{x}_{y}";
-                    newTile.Setup(crop, GetSprite(crop));
-                    newTile.SetGridPosition(x, y);
-
-                    board[x, y] = newTile;
-                    newTile.MoveTo(targetPos, dropDuration);
+                    renderer.color = Color.white;
                 }
             }
         }
-
-        yield return new WaitForSeconds(dropDuration + 0.05f);
-    }
-
-    // ==================== DÉTECTION DES ALIGNEMENTS ====================
-
-    public List<Tile> FindAllMatches()
-    {
-        HashSet<Tile> matchedTiles = new HashSet<Tile>();
-
-        // 1. Alignements Horizontaux
-        for (int y = 0; y < height; y++)
-        {
-            int matchCount = 1;
-            for (int x = 0; x < width; x++)
-            {
-                if (x < width - 1 && board[x, y] != null && board[x + 1, y] != null && board[x, y].cropType == board[x + 1, y].cropType)
-                {
-                    matchCount++;
-                }
-                else
-                {
-                    if (matchCount >= 3)
-                    {
-                        for (int i = 0; i < matchCount; i++)
-                        {
-                            if (board[x - i, y] != null) matchedTiles.Add(board[x - i, y]);
-                        }
-                    }
-                    matchCount = 1;
-                }
-            }
-        }
-
-        // 2. Alignements Verticaux
-        for (int x = 0; x < width; x++)
-        {
-            int matchCount = 1;
-            for (int y = 0; y < height; y++)
-            {
-                if (y < height - 1 && board[x, y] != null && board[x, y + 1] != null && board[x, y].cropType == board[x, y + 1].cropType)
-                {
-                    matchCount++;
-                }
-                else
-                {
-                    if (matchCount >= 3)
-                    {
-                        for (int i = 0; i < matchCount; i++)
-                        {
-                            if (board[x, y - i] != null) matchedTiles.Add(board[x, y - i]);
-                        }
-                    }
-                    matchCount = 1;
-                }
-            }
-        }
-
-        return new List<Tile>(matchedTiles);
     }
 
     private CropType GetSafeRandomCrop(int x, int y)

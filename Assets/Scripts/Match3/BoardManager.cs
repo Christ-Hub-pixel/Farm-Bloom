@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -19,6 +20,12 @@ public class BoardManager : MonoBehaviour
     [SerializeField] private Sprite potatoSprite;
 
     private Tile[,] board;
+    private bool isBusy = false;
+
+    // Interaction & Sélection
+    private Tile selectedTile;
+    private Vector2 touchStartPos;
+    private const float MinSwipeDistance = 30f;
 
     private readonly CropType[] cropTypes =
     {
@@ -50,6 +57,13 @@ public class BoardManager : MonoBehaviour
         CreateBoard();
     }
 
+    private void Update()
+    {
+        if (isBusy || board == null) return;
+
+        HandleInput();
+    }
+
     private void CenterCamera()
     {
         Camera cam = Camera.main;
@@ -62,8 +76,10 @@ public class BoardManager : MonoBehaviour
 
         float centerX = (width - 1) * tileSize * 0.5f;
         float centerY = (height - 1) * tileSize * 0.5f;
-        cam.transform.position = new Vector3(centerX, centerY, -10f);
+        cam.transform.position = new Vector3(centerX, centerY - 0.2f, -10f);
         cam.orthographic = true;
+        cam.clearFlags = CameraClearFlags.SolidColor; // Fond uni vert naturel
+        cam.backgroundColor = new Color(0.18f, 0.45f, 0.22f); // Vert prairie Farm Bloom
 
         float aspect = (float)Screen.width / Mathf.Max(1, Screen.height);
         float boardWidth = width * tileSize + 1.2f;
@@ -75,13 +91,10 @@ public class BoardManager : MonoBehaviour
         {
             cam.orthographicSize = Mathf.Max(width, height) * tileSize * 0.75f;
         }
-
-        cam.backgroundColor = new Color(0.18f, 0.45f, 0.22f); // Vert herbe prairie Farm Bloom
     }
 
     private void EnsureDefaults()
     {
-        // Création de secours automatique du prefab si non assigné
         if (tilePrefab == null)
         {
             GameObject fallbackPrefab = new GameObject("DefaultTilePrefab");
@@ -91,7 +104,6 @@ public class BoardManager : MonoBehaviour
             fallbackPrefab.SetActive(false);
         }
 
-        // Génération automatique des 5 sprites nets avec couleurs caractéristiques si non assignés
         strawberrySprite ??= CreateCropSprite(new Color(0.95f, 0.15f, 0.25f), "Fraise");
         carrotSprite ??= CreateCropSprite(new Color(1f, 0.55f, 0.05f), "Carotte");
         cornSprite ??= CreateCropSprite(new Color(1f, 0.85f, 0.1f), "Maïs");
@@ -119,19 +131,215 @@ public class BoardManager : MonoBehaviour
                 tile.gameObject.SetActive(true);
                 tile.name = $"Tile_{x}_{y}";
                 tile.Setup(crop, GetSprite(crop));
+                tile.SetGridPosition(x, y);
 
                 board[x, y] = tile;
             }
         }
 
-        Debug.Log($"<b>[Farm Bloom]</b> Plateau Match-3 {width}x{height} généré avec succès ({width * height} récoltes, 0 alignement au départ) !");
+        Debug.Log($"<b>[Farm Bloom]</b> Plateau {width}x{height} généré avec succès ! Prêt pour le jeu.");
+    }
+
+    // ==================== INTERACTION & ÉCHANGE ====================
+
+    private void HandleInput()
+    {
+        if (Input.GetMouseButtonDown(0))
+        {
+            Tile clickedTile = GetTileAtScreenPosition(Input.mousePosition);
+            if (clickedTile != null)
+            {
+                // Si on avait déjà sélectionné une tuile voisine par clic
+                if (selectedTile != null && IsNeighbor(selectedTile, clickedTile))
+                {
+                    Tile prev = selectedTile;
+                    selectedTile.SetSelected(false);
+                    selectedTile = null;
+                    StartCoroutine(TrySwapRoutine(prev, clickedTile));
+                    return;
+                }
+
+                if (selectedTile != null)
+                {
+                    selectedTile.SetSelected(false);
+                }
+
+                selectedTile = clickedTile;
+                selectedTile.SetSelected(true);
+                touchStartPos = Input.mousePosition;
+            }
+        }
+        else if (Input.GetMouseButtonUp(0) && selectedTile != null)
+        {
+            Vector2 delta = (Vector2)Input.mousePosition - touchStartPos;
+
+            if (delta.magnitude >= MinSwipeDistance)
+            {
+                // Détection de la direction du glissement (Swipe)
+                Vector2Int dir = Vector2Int.zero;
+                if (Mathf.Abs(delta.x) > Mathf.Abs(delta.y))
+                {
+                    dir = delta.x > 0 ? Vector2Int.right : Vector2Int.left;
+                }
+                else
+                {
+                    dir = delta.y > 0 ? Vector2Int.up : Vector2Int.down;
+                }
+
+                int targetX = selectedTile.x + dir.x;
+                int targetY = selectedTile.y + dir.y;
+
+                if (IsValidGridPosition(targetX, targetY))
+                {
+                    Tile neighbor = board[targetX, targetY];
+                    Tile current = selectedTile;
+                    selectedTile.SetSelected(false);
+                    selectedTile = null;
+                    StartCoroutine(TrySwapRoutine(current, neighbor));
+                    return;
+                }
+            }
+
+            // Simple clic : on garde la sélection active pour permettre un second clic sur le voisin
+        }
+    }
+
+    private bool IsNeighbor(Tile a, Tile b)
+    {
+        return (Mathf.Abs(a.x - b.x) + Mathf.Abs(a.y - b.y)) == 1;
+    }
+
+    private bool IsValidGridPosition(int x, int y)
+    {
+        return x >= 0 && x < width && y >= 0 && y < height;
+    }
+
+    private Tile GetTileAtScreenPosition(Vector3 screenPos)
+    {
+        Camera cam = Camera.main;
+        if (cam == null) return null;
+
+        Vector3 worldPos = cam.ScreenToWorldPoint(screenPos);
+        int x = Mathf.RoundToInt(worldPos.x / tileSize);
+        int y = Mathf.RoundToInt(worldPos.y / tileSize);
+
+        if (IsValidGridPosition(x, y))
+        {
+            return board[x, y];
+        }
+
+        return null;
+    }
+
+    private IEnumerator TrySwapRoutine(Tile a, Tile b)
+    {
+        isBusy = true;
+
+        // 1. Sauvegarder positions d'origine
+        int xA = a.x, yA = a.y;
+        int xB = b.x, yB = b.y;
+
+        // 2. Échanger dans le tableau de données
+        board[xA, yA] = b;
+        board[xB, yB] = a;
+        a.SetGridPosition(xB, yB);
+        b.SetGridPosition(xA, yA);
+
+        // 3. Animation fluide de l'échange
+        float swapDuration = 0.2f;
+        a.MoveTo(new Vector3(xB * tileSize, yB * tileSize, 0f), swapDuration);
+        b.MoveTo(new Vector3(xA * tileSize, yA * tileSize, 0f), swapDuration);
+
+        yield return new WaitForSeconds(swapDuration + 0.05f);
+
+        // 4. Vérifier si un alignement de 3 récoltes (ou plus) a été formé
+        List<Tile> matches = FindAllMatches();
+
+        if (matches.Count > 0)
+        {
+            Debug.Log($"<color=green><b>[Match-3]</b> Match réussi ! {matches.Count} récoltes alignées !</color>");
+            // Étape suivante : suppression et gravité
+        }
+        else
+        {
+            // Aucun alignement : annuler l'échange (retour à la place initiale)
+            Debug.Log("<color=orange><b>[Match-3]</b> Pas d'alignement, retour à la position initiale.</color>");
+
+            board[xA, yA] = a;
+            board[xB, yB] = b;
+            a.SetGridPosition(xA, yA);
+            b.SetGridPosition(xB, yB);
+
+            a.MoveTo(new Vector3(xA * tileSize, yA * tileSize, 0f), swapDuration);
+            b.MoveTo(new Vector3(xB * tileSize, yB * tileSize, 0f), swapDuration);
+
+            yield return new WaitForSeconds(swapDuration + 0.05f);
+        }
+
+        isBusy = false;
+    }
+
+    // ==================== DÉTECTION DES ALIGNEMENTS ====================
+
+    public List<Tile> FindAllMatches()
+    {
+        HashSet<Tile> matchedTiles = new HashSet<Tile>();
+
+        // 1. Alignements Horizontaux
+        for (int y = 0; y < height; y++)
+        {
+            int matchCount = 1;
+            for (int x = 0; x < width; x++)
+            {
+                if (x < width - 1 && board[x, y].cropType == board[x + 1, y].cropType)
+                {
+                    matchCount++;
+                }
+                else
+                {
+                    if (matchCount >= 3)
+                    {
+                        for (int i = 0; i < matchCount; i++)
+                        {
+                            matchedTiles.Add(board[x - i, y]);
+                        }
+                    }
+                    matchCount = 1;
+                }
+            }
+        }
+
+        // 2. Alignements Verticaux
+        for (int x = 0; x < width; x++)
+        {
+            int matchCount = 1;
+            for (int y = 0; y < height; y++)
+            {
+                if (y < height - 1 && board[x, y].cropType == board[x, y + 1].cropType)
+                {
+                    matchCount++;
+                }
+                else
+                {
+                    if (matchCount >= 3)
+                    {
+                        for (int i = 0; i < matchCount; i++)
+                        {
+                            matchedTiles.Add(board[x, y - i]);
+                        }
+                    }
+                    matchCount = 1;
+                }
+            }
+        }
+
+        return new List<Tile>(matchedTiles);
     }
 
     private CropType GetSafeRandomCrop(int x, int y)
     {
         List<CropType> available = new List<CropType>(cropTypes);
 
-        // Évite 3 identiques consécutifs à l'horizontale
         if (x >= 2)
         {
             CropType left1 = board[x - 1, y].cropType;
@@ -143,7 +351,6 @@ public class BoardManager : MonoBehaviour
             }
         }
 
-        // Évite 3 identiques consécutifs à la verticale
         if (y >= 2)
         {
             CropType down1 = board[x, y - 1].cropType;
@@ -187,9 +394,8 @@ public class BoardManager : MonoBehaviour
                 float dist = Vector2.Distance(new Vector2(x, y), center);
                 if (dist <= radius)
                 {
-                    // Dégradé d'éclairage 3D casual arrondi
                     float light = Mathf.Clamp01(1f - Vector2.Distance(new Vector2(x, y), center + new Vector2(-15f, 15f)) / (radius * 1.6f)) * 0.35f;
-                    float border = dist > radius - 3f ? 0.75f : 1f; // contour doux
+                    float border = dist > radius - 3f ? 0.75f : 1f;
                     px[y * size + x] = new Color(
                         Mathf.Min(1f, mainColor.r + light) * border,
                         Mathf.Min(1f, mainColor.g + light) * border,

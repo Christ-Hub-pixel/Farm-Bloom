@@ -10,9 +10,9 @@ namespace FarmBloom.Match3
     public class Match3Board : MonoBehaviour
     {
         [Header("Board Dimensions")]
-        public int Width = 7;
-        public int Height = 8;
-        public float TileSpacing = 0.85f;
+        public int Width = 6;
+        public int Height = 6;
+        public float TileSpacing = 0.95f;
 
         [Header("Level Configuration")]
         public LevelData CurrentLevel;

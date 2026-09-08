@@ -1,16 +1,5 @@
 namespace FarmBloom.Core
 {
-    public enum CropType
-    {
-        None = 0,
-        Tomato = 1,       // Rouge
-        Corn = 2,         // Jaune
-        Carrot = 3,       // Orange
-        Banana = 4,       // Jaune courbé
-        SweetPotato = 5,  // Violet
-        Flower = 6,       // Rose / Blanc
-        Cocoa = 7         // Marron
-    }
 
     public enum SpecialTileType
     {

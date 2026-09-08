@@ -63,4 +63,26 @@ public class Tile : MonoBehaviour
         transform.position = targetPos;
         moveCoroutine = null;
     }
+
+    public void Disappear(float duration)
+    {
+        if (moveCoroutine != null) StopCoroutine(moveCoroutine);
+        StartCoroutine(DisappearRoutine(duration));
+    }
+
+    private IEnumerator DisappearRoutine(float duration)
+    {
+        Vector3 startScale = transform.localScale;
+        float elapsed = 0f;
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / duration);
+            transform.localScale = Vector3.Lerp(startScale, Vector3.zero, t);
+            yield return null;
+        }
+
+        Destroy(gameObject);
+    }
 }

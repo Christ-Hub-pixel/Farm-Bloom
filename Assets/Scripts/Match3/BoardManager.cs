@@ -257,8 +257,7 @@ public class BoardManager : MonoBehaviour
 
         if (matches.Count > 0)
         {
-            Debug.Log($"<color=green><b>[Match-3]</b> Match réussi ! {matches.Count} récoltes alignées !</color>");
-            // Étape suivante : suppression et gravité
+            yield return StartCoroutine(ProcessMatchesRoutine(matches));
         }
         else
         {
@@ -274,9 +273,117 @@ public class BoardManager : MonoBehaviour
             b.MoveTo(new Vector3(xB * tileSize, yB * tileSize, 0f), swapDuration);
 
             yield return new WaitForSeconds(swapDuration + 0.05f);
+            isBusy = false;
+        }
+    }
+
+    // ==================== SUPPRESSION, GRAVITÉ & REMPLISSAGE ====================
+
+    private IEnumerator ProcessMatchesRoutine(List<Tile> initialMatches)
+    {
+        List<Tile> currentMatches = initialMatches;
+
+        while (currentMatches != null && currentMatches.Count > 0)
+        {
+            Debug.Log($"<color=green><b>[Match-3]</b> 💥 Destruction de {currentMatches.Count} récoltes !</color>");
+
+            // 1. Destruction animée des récoltes alignées
+            foreach (Tile tile in currentMatches)
+            {
+                if (tile != null)
+                {
+                    board[tile.x, tile.y] = null;
+                    tile.Disappear(0.18f);
+                }
+            }
+
+            yield return new WaitForSeconds(0.2f);
+
+            // 2. Gravité : faire descendre les tuiles restantes
+            yield return StartCoroutine(ApplyGravityRoutine());
+
+            // 3. Remplissage : spawner de nouvelles récoltes en haut de chaque colonne
+            yield return StartCoroutine(RefillBoardRoutine());
+
+            // 4. Cascades : vérifier si de nouveaux alignements se sont formés
+            currentMatches = FindAllMatches();
+            if (currentMatches.Count > 0)
+            {
+                Debug.Log($"<color=yellow><b>[Match-3]</b> ✨ Combo en cascade ! {currentMatches.Count} nouvelles récoltes alignées !</color>");
+                yield return new WaitForSeconds(0.12f);
+            }
         }
 
         isBusy = false;
+    }
+
+    private IEnumerator ApplyGravityRoutine()
+    {
+        bool anyTileMoved = false;
+
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                if (board[x, y] == null)
+                {
+                    // Trouver la première tuile au-dessus
+                    for (int aboveY = y + 1; aboveY < height; aboveY++)
+                    {
+                        if (board[x, aboveY] != null)
+                        {
+                            Tile fallingTile = board[x, aboveY];
+                            board[x, y] = fallingTile;
+                            board[x, aboveY] = null;
+
+                            fallingTile.SetGridPosition(x, y);
+                            fallingTile.MoveTo(new Vector3(x * tileSize, y * tileSize, 0f), 0.2f);
+                            anyTileMoved = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (anyTileMoved)
+        {
+            yield return new WaitForSeconds(0.22f);
+        }
+    }
+
+    private IEnumerator RefillBoardRoutine()
+    {
+        float dropDuration = 0.25f;
+
+        for (int x = 0; x < width; x++)
+        {
+            int emptySpacesInCol = 0;
+
+            for (int y = 0; y < height; y++)
+            {
+                if (board[x, y] == null)
+                {
+                    emptySpacesInCol++;
+                    CropType crop = cropTypes[Random.Range(0, cropTypes.Length)];
+
+                    // Apparition au-dessus de la grille
+                    Vector3 spawnPos = new Vector3(x * tileSize, (height + emptySpacesInCol) * tileSize, 0f);
+                    Vector3 targetPos = new Vector3(x * tileSize, y * tileSize, 0f);
+
+                    Tile newTile = Instantiate(tilePrefab, spawnPos, Quaternion.identity, transform);
+                    newTile.gameObject.SetActive(true);
+                    newTile.name = $"Tile_{x}_{y}";
+                    newTile.Setup(crop, GetSprite(crop));
+                    newTile.SetGridPosition(x, y);
+
+                    board[x, y] = newTile;
+                    newTile.MoveTo(targetPos, dropDuration);
+                }
+            }
+        }
+
+        yield return new WaitForSeconds(dropDuration + 0.05f);
     }
 
     // ==================== DÉTECTION DES ALIGNEMENTS ====================
@@ -291,7 +398,7 @@ public class BoardManager : MonoBehaviour
             int matchCount = 1;
             for (int x = 0; x < width; x++)
             {
-                if (x < width - 1 && board[x, y].cropType == board[x + 1, y].cropType)
+                if (x < width - 1 && board[x, y] != null && board[x + 1, y] != null && board[x, y].cropType == board[x + 1, y].cropType)
                 {
                     matchCount++;
                 }
@@ -301,7 +408,7 @@ public class BoardManager : MonoBehaviour
                     {
                         for (int i = 0; i < matchCount; i++)
                         {
-                            matchedTiles.Add(board[x - i, y]);
+                            if (board[x - i, y] != null) matchedTiles.Add(board[x - i, y]);
                         }
                     }
                     matchCount = 1;
@@ -315,7 +422,7 @@ public class BoardManager : MonoBehaviour
             int matchCount = 1;
             for (int y = 0; y < height; y++)
             {
-                if (y < height - 1 && board[x, y].cropType == board[x, y + 1].cropType)
+                if (y < height - 1 && board[x, y] != null && board[x, y + 1] != null && board[x, y].cropType == board[x, y + 1].cropType)
                 {
                     matchCount++;
                 }
@@ -325,7 +432,7 @@ public class BoardManager : MonoBehaviour
                     {
                         for (int i = 0; i < matchCount; i++)
                         {
-                            matchedTiles.Add(board[x, y - i]);
+                            if (board[x, y - i] != null) matchedTiles.Add(board[x, y - i]);
                         }
                     }
                     matchCount = 1;
